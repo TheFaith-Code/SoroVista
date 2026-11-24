@@ -1,4 +1,4 @@
-.PHONY: build run test test-race test-db lint fmt up down clean
+.PHONY: build run test test-race test-db lint vulncheck fmt up down clean
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -41,6 +41,9 @@ test-db:
 
 lint:
 	golangci-lint run
+
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
 fmt:
 	gofmt -w .
