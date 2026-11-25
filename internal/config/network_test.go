@@ -1,11 +1,56 @@
 package config
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/sorotrail/sorovista/internal/rpc"
 )
+
+// newRPCNode stands up a fake Stellar RPC node whose every request gets body
+// and returns it as the node's response.
+func newRPCNode(t *testing.T, body string) *rpc.HTTPClient {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return rpc.NewHTTPClient(srv.URL, srv.Client())
+}
+
+func TestStartupNetworkCheck(t *testing.T) {
+	t.Run("matching passphrase proceeds", func(t *testing.T) {
+		node := newRPCNode(t, `{"jsonrpc":"2.0","id":1,"result":{"passphrase":"`+rpc.PassphraseTestnet+`"}}`)
+		err := StartupNetworkCheck(context.Background(), node, rpc.PassphraseTestnet)
+		if err != nil {
+			t.Fatalf("matching passphrase should proceed, got %v", err)
+		}
+	})
+
+	t.Run("mismatched passphrase fails", func(t *testing.T) {
+		node := newRPCNode(t, `{"jsonrpc":"2.0","id":1,"result":{"passphrase":"`+rpc.PassphraseMainnet+`"}}`)
+		err := StartupNetworkCheck(context.Background(), node, rpc.PassphraseTestnet)
+		if err == nil || !strings.Contains(err.Error(), "network mismatch") {
+			t.Fatalf("mainnet endpoint behind testnet config must fail naming both, got %v", err)
+		}
+	})
+
+	t.Run("unreachable endpoint proceeds with a warning", func(t *testing.T) {
+		// The endpoint refuses getNetwork; the decision is deliberately
+		// non-fatal so the poller surfaces the outage while SoroVista
+		// starts — the warning is main's to log.
+		node := newRPCNode(t, `{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"getNetwork is not supported"}}`)
+		err := StartupNetworkCheck(context.Background(), node, rpc.PassphraseTestnet)
+		if !errors.Is(err, ErrNetworkUnverifiable) {
+			t.Fatalf("expected ErrNetworkUnverifiable so startup proceeds with a warning, got %v", err)
+		}
+	})
+}
 
 func TestParseNetwork(t *testing.T) {
 	tests := []struct {
@@ -105,14 +150,47 @@ func TestNetworkByName(t *testing.T) {
 }
 
 func TestVerifyPassphrase(t *testing.T) {
-	if err := VerifyPassphrase(rpc.PassphraseTestnet, rpc.PassphraseTestnet); err != nil {
-		t.Fatalf("matching passphrases should verify, got %v", err)
+	tests := []struct {
+		name       string
+		configured string
+		reported   string
+		wantErr    bool
+		contains   []string
+	}{
+		{"matching testnet passphrases verify", rpc.PassphraseTestnet, rpc.PassphraseTestnet, false, nil},
+		// Empty on either side means verification is skipped, not failed: the
+		// node or the config may simply not report a passphrase.
+		{"both empty skip verification", "", "", false, nil},
+		{"empty configured skips verification", "", rpc.PassphraseTestnet, false, nil},
+		{"empty reported skips verification", rpc.PassphraseTestnet, "", false, nil},
+		{"identical unknown passphrases verify", "custom-network", "custom-network", false, nil},
+		{"known network mismatch names both sides", rpc.PassphraseMainnet, rpc.PassphraseTestnet, true,
+			[]string{"network mismatch", "mainnet", "testnet"}},
+		{"unknown mismatch quotes both values", "custom-a", "custom-b", true,
+			[]string{"network mismatch", `"custom-a"`, `"custom-b"`}},
+		// Comparison is literal: a near-miss (here a trailing space) is still a
+		// mismatch, so a typo in NETWORK_PASSPHRASE cannot pass silently.
+		{"whitespace difference is a mismatch", rpc.PassphraseTestnet, rpc.PassphraseTestnet + " ", true,
+			[]string{"network mismatch", "testnet"}},
 	}
-	if err := VerifyPassphrase("", ""); err != nil {
-		t.Fatalf("empty passphrases skip verification, got %v", err)
-	}
-	err := VerifyPassphrase(rpc.PassphraseMainnet, rpc.PassphraseTestnet)
-	if err == nil || !strings.Contains(err.Error(), "network mismatch") {
-		t.Fatalf("mainnet config against testnet node must fail naming both, got %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := VerifyPassphrase(tt.configured, tt.reported)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("expected verification to pass, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected a network mismatch error, got nil")
+			}
+			for _, want := range tt.contains {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error %q should contain %q", err, want)
+				}
+			}
+		})
 	}
 }

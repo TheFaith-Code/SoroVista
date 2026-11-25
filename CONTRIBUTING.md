@@ -47,7 +47,8 @@ Set `REQUIRE_DB=1` to make a missing `TEST_DATABASE_URL` fail instead of skip,
 so a job can assert that the database tests really ran rather than trusting its
 own configuration.
 
-Run `make fmt` and `make lint` before pushing.
+Run `make fmt` and `make ci` before pushing. `make ci` runs the build, vet,
+test and lint checks CI runs (see the Makefile for details).
 
 ## How the code fits together
 
@@ -145,7 +146,7 @@ channel: see [SECURITY.md](SECURITY.md) rather than the conduct process.
 
 ```sh
 git checkout -b feature/descending-pagination
-make fmt && make lint && make test
+make fmt && make ci
 git commit -m "sorotrailsource: add descending pagination"
 gh pr create --title "Add descending pagination" \
   --body "Closes #123. Test output: make test-db passes against the compose Postgres."
