@@ -83,11 +83,19 @@ Events across all contracts (`GET /api/events`) or for a single contract (`GET /
 | `limit` / `cursor` | Pagination (`limit` in `1..200`, default `50`) |
 
 ```bash
-curl 'http://localhost:8080/api/contracts/CC.../events?type=contract&limit=50'
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events?type=contract&limit=50'
 ```
+
+`{id}` is a Soroban contract strkey (a `C...` address); replace the example above with your contract. The response has the same `events` / `next_cursor` shape as `GET /api/events`.
 
 ### `GET /api/events/{id}`
 Fetch a single event by its unique id (TOID), fully decoded.
+
+```bash
+curl 'http://localhost:8080/api/events/0016880389704384512-0000000003'
+```
+
+`{id}` is the event's TOID, as returned in an event's `id` field. A SEP-41 token event also carries an extra `token` object with its decoded reading; unknown ids return `404`.
 
 ### `GET /api/events/stream`
 Stream newly ingested events in real time over Server-Sent Events (`text/event-stream`).
@@ -96,6 +104,15 @@ Stream newly ingested events in real time over Server-Sent Events (`text/event-s
 
 ```bash
 curl -N 'http://localhost:8080/api/events/stream?contract_id=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC&type=contract'
+```
+
+In a browser, consume the same stream with `EventSource`. Frames are named `event`, so listen for that name rather than `message`:
+
+```js
+const stream = new EventSource('http://localhost:8080/api/events/stream?type=contract');
+stream.addEventListener('event', (e) => {
+  console.log(e.lastEventId, JSON.parse(e.data)); // TOID, event JSON
+});
 ```
 
 **Frame format & heartbeats:**
