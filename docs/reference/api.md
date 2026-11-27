@@ -170,6 +170,11 @@ Both endpoints return the same `BucketSeries` shape. Each bucket is the number o
 }
 ```
 
+## Event responses and the token annotation
+
+Event objects returned by `GET /api/events`, `GET /api/contracts/{id}/events`, `GET /api/events/{id}` and the SSE stream may carry a `token` field describing the event as a SEP-41 token operation. It names the event and resolves its topics into `from`, `to` and `amount` slots. See [SEP-41 token annotation](token-events.md) for the recognised events, the per-event slot meanings and the caveat that the field describes an event's shape rather than verifying that a contract implements SEP-41.
+
+
 ## Pagination
 
 List endpoints (`GET /api/contracts`, `GET /api/events`, and `GET /api/contracts/{id}/events`) return up to `limit` items (`1..200`, default `50`) ordered newest-first alongside an optional `next_cursor` string. Pass `next_cursor` back as the `cursor` query parameter to fetch the following page; an absent or empty `next_cursor` indicates that no older results remain.
