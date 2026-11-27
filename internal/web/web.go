@@ -24,6 +24,7 @@ import (
 	"github.com/sorotrail/sorovista/internal/config"
 	"github.com/sorotrail/sorovista/internal/decode"
 	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/textutil"
 )
 
 //go:embed templates/*.html
@@ -190,13 +191,16 @@ func templateFuncs() template.FuncMap {
 		// shorten abbreviates long identifiers to keepRunes head and tail runes
 		// for table cells.
 		"shorten": decode.Shorten,
-		// summary renders a value, truncated to maxRunes runes for a single
-		// table cell.
+		// summary renders a value, limited by Unicode code points for a table cell.
 		"summary": func(raw any, maxRunes int) string {
-			if s, ok := raw.(string); ok {
-				return decode.Truncate(s, maxRunes)
+			var text string
+			switch v := raw.(type) {
+			case string:
+				text = v
+			default:
+				text = fmt.Sprint(v)
 			}
-			return decode.Truncate(fmt.Sprint(raw), maxRunes)
+			return textutil.TruncateRunes(text, maxRunes)
 		},
 		// join concatenates strings with a separator.
 		"join": strings.Join,
